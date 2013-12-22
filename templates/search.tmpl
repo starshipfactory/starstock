@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+	<head>
+		<title>StarStock &mdash; Starship Factory stock management</title>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+		<style type="text/css">
+		body {
+			background-color: #CCCCFF;
+			text-align: center;
+		}
+
+		input#q {
+			width: 30%;
+			margin: auto;
+		}
+
+		div#results {
+			width: 100%;
+			text-align: justify;
+		}
+		</style>
+		<script type="text/javascript" src="/js/prototype.js"></script>
+		<script type="text/javascript" src="/js/underscore.min.js"></script>
+		<script type="text/javascript">
+		<!--//
+		var handler = null;
+		var prevsearch = "";
+
+		function KeyEvent()
+		{
+			if (handler != null)
+			{
+				clearTimeout(handler);
+				handler = null;
+			}
+
+			// Delay firing the FireSearch event by a few milliseconds so we
+			// don't fire it repeatedly if someone's still typing.
+			handler = setTimeout(FireSearch, 350);
+		}
+
+		function FireSearch()
+		{
+			var elem = $('q');
+			clearTimeout(handler);
+			handler = null;
+
+			if (elem.value.length < 3)
+				return;
+
+			if (elem.value == prevsearch)
+				return;
+
+			prevsearch = elem.value;
+
+			new Ajax.Request('/api/products?q=' + encodeURIComponent(elem.value), {
+				onSuccess: function(response) {
+					var results = $('results');
+					var products = response.responseJSON["Products"];
+					var vendors = response.responseJSON["Vendors"];
+
+					while (results.hasChildNodes())
+						results.removeChild(results.firstChild);
+
+					if (products.length > 0)
+					{
+						var prods = _.first(products, 3);
+						var el = document.createElement("h2");
+						el.appendChild(document.createTextNode("Products"));
+						results.appendChild(el);
+
+						_.each(prods, function(p) {
+							var div = document.createElement("div");
+							div.className = "resultRow";
+
+							if (p["Picture"].length > 0)
+							{
+								el = document.createElement("img")
+								el.setAttribute("src", p["Picture"]);
+								el.setAttribute("alt", p["Name"]);
+								div.appendChild(el);
+							}
+							el = document.createElement("a");
+							el.setAttribute("href", p["Path"]);
+							el.appendChild(document.createTextNode(p["Name"]));
+							div.appendChild(el);
+							results.appendChild(div);
+						});
+
+						if (products.length > 3)
+						{
+							el = document.createElement("p");
+							el.appendChild(document.createTextNode("More"));
+							results.appendChild(el);
+						}
+					}
+					if (vendors.length > 0)
+					{
+						var vens = _.first(vendors, 3);
+						var el = document.createElement("h2");
+						el.appendChild(document.createTextNode("Vendors"));
+						results.appendChild(el);
+
+						_.each(vens, function(p) {
+							var div = document.createElement("div");
+							div.className = "resultRow";
+
+							if (p["Picture"].length > 0)
+							{
+								el = document.createElement("img")
+								el.setAttribute("src", p["Picture"]);
+								el.setAttribute("alt", p["Name"]);
+								div.appendChild(el);
+							}
+							el = document.createElement("a");
+							el.setAttribute("href", p["Path"]);
+							el.appendChild(document.createTextNode(p["Name"]));
+							div.appendChild(el);
+							results.appendChild(div);
+						});
+
+						if (vendors.length > 3)
+						{
+							el = document.createElement("p");
+							el.appendChild(document.createTextNode("More"));
+							results.appendChild(el);
+						}
+					}
+				}
+			});
+		}
+		//-->
+		</script>
+	</head>
+	<body>
+		<input type="text" name="q" id="q" title="Enter any product or vendor name." onkeyup="KeyEvent();" />
+		<div id="results"></div>
+	</body>
+</html>
