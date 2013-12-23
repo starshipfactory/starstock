@@ -117,7 +117,7 @@ func (self *ProductSearchAPI) ServeHTTP(w http.ResponseWriter, req *http.Request
 
 	numRequests.Add(1)
 
-	if len(query) > 3 {
+	if len(query) >= 3 {
 		var r SearchResult
 
 		// TODO(caoimhe): stub
