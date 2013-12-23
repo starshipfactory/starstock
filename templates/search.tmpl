@@ -44,7 +44,10 @@
 			elem.className = "search-query input-xlarge muted";
 			elem.setAttribute("disabled", "disabled");
 
-			new Ajax.Request('/api/products?q=' + encodeURIComponent(elem.value), {
+			new Ajax.Request('/api/products', {
+				parameters: {
+					q: elem.value,
+				},
 				onFailure: function(response) {
 					var alert = document.createElement("div");
 					var el = document.createElement("button");
