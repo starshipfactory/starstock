@@ -3,24 +3,12 @@
 	<head>
 		<title>StarStock &mdash; Starship Factory stock management</title>
 		<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-		<style type="text/css">
-		body {
-			background-color: #CCCCFF;
-			text-align: center;
-		}
-
-		input#q {
-			width: 30%;
-			margin: auto;
-		}
-
-		div#results {
-			width: 100%;
-			text-align: justify;
-		}
-		</style>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<link rel="stylesheet" href="/css/bootstrap.min.css" />
 		<script type="text/javascript" src="/js/prototype.js"></script>
 		<script type="text/javascript" src="/js/underscore.min.js"></script>
+		<script type="text/javascript" src="/js/jquery.min.js"></script>
+		<script type="text/javascript" src="/js/bootstrap.min.js"></script>
 		<script type="text/javascript">
 		<!--//
 		var handler = null;
@@ -41,7 +29,7 @@
 
 		function FireSearch()
 		{
-			var elem = $('q');
+			var elem = $('#queryField')[0];
 			clearTimeout(handler);
 			handler = null;
 
@@ -55,7 +43,7 @@
 
 			new Ajax.Request('/api/products?q=' + encodeURIComponent(elem.value), {
 				onSuccess: function(response) {
-					var results = $('results');
+					var results = $('#results')[0];
 					var products = response.responseJSON["Products"];
 					var vendors = response.responseJSON["Vendors"];
 
@@ -64,66 +52,136 @@
 
 					if (products.length > 0)
 					{
-						var prods = _.first(products, 3);
-						var el = document.createElement("h2");
-						el.appendChild(document.createTextNode("Products"));
-						results.appendChild(el);
+						var panel = document.createElement("div");
+						var panelhead = document.createElement("div");
+						var list = document.createElement("ul");
 
-						_.each(prods, function(p) {
-							var div = document.createElement("div");
-							div.className = "resultRow";
+						panel.className = "panel panel-default";
+						panelhead.className = "panel-heading";
+						panelhead.appendChild(document.createTextNode("Products"));
+						panel.appendChild(panelhead);
+
+						list.className = "list-group";
+						list.setAttribute("id", "products-list");
+
+						_.each(_.first(products, 3), function(p) {
+							var li = document.createElement("li");
+							li.className = "list-group-item";
 
 							if (p["Picture"].length > 0)
 							{
 								el = document.createElement("img")
 								el.setAttribute("src", p["Picture"]);
 								el.setAttribute("alt", p["Name"]);
-								div.appendChild(el);
+								li.appendChild(el);
 							}
 							el = document.createElement("a");
 							el.setAttribute("href", p["Path"]);
 							el.appendChild(document.createTextNode(p["Name"]));
-							div.appendChild(el);
-							results.appendChild(div);
+							li.appendChild(el);
+							list.appendChild(li);
 						});
+						_.each(_.rest(products, 3), function(p) {
+							var li = document.createElement("li");
+							li.className = "list-group-item";
+							li.style.display = "none";
+
+							if (p["Picture"].length > 0)
+							{
+								el = document.createElement("img")
+								el.setAttribute("src", p["Picture"]);
+								el.setAttribute("alt", p["Name"]);
+								li.appendChild(el);
+							}
+							el = document.createElement("a");
+							el.setAttribute("href", p["Path"]);
+							el.appendChild(document.createTextNode(p["Name"]));
+							li.appendChild(el);
+							list.appendChild(li);
+						});
+						panel.appendChild(list);
+						results.appendChild(panel);
 
 						if (products.length > 3)
 						{
-							el = document.createElement("p");
-							el.appendChild(document.createTextNode("More"));
-							results.appendChild(el);
+							var btn = document.createElement("button");
+							btn.className = "btn btn-primary";
+							btn.appendChild(document.createTextNode("Show all"));
+							btn.onclick = function() {
+								var lst = $('#products-list')[0];
+								_.each(lst.childNodes, function(p) {
+									p.style.display = "list-item";
+								});
+								this.style.display = "none";
+							}
+							results.appendChild(btn);
 						}
 					}
 					if (vendors.length > 0)
 					{
-						var vens = _.first(vendors, 3);
-						var el = document.createElement("h2");
-						el.appendChild(document.createTextNode("Vendors"));
-						results.appendChild(el);
+						var panel = document.createElement("div");
+						var panelhead = document.createElement("div");
+						var list = document.createElement("ul");
 
-						_.each(vens, function(p) {
-							var div = document.createElement("div");
-							div.className = "resultRow";
+						panel.className = "panel panel-default";
+						panelhead.className = "panel-heading";
+						panelhead.appendChild(document.createTextNode("Vendors"));
+						panel.appendChild(panelhead);
+
+						list.className = "list-group";
+						list.setAttribute("id", "vendors-list");
+
+						_.each(_.first(vendors, 3), function(p) {
+							var li = document.createElement("li");
+							li.className = "list-group-item";
 
 							if (p["Picture"].length > 0)
 							{
 								el = document.createElement("img")
 								el.setAttribute("src", p["Picture"]);
 								el.setAttribute("alt", p["Name"]);
-								div.appendChild(el);
+								li.appendChild(el);
 							}
 							el = document.createElement("a");
 							el.setAttribute("href", p["Path"]);
 							el.appendChild(document.createTextNode(p["Name"]));
-							div.appendChild(el);
-							results.appendChild(div);
+							li.appendChild(el);
+							list.appendChild(li);
 						});
+						_.each(_.rest(vendors, 3), function(p) {
+							var li = document.createElement("li");
+							li.className = "list-group-item";
+							li.style.display = "none";
 
-						if (vendors.length > 3)
+							if (p["Picture"].length > 0)
+							{
+								el = document.createElement("img")
+								el.setAttribute("src", p["Picture"]);
+								el.setAttribute("alt", p["Name"]);
+								li.appendChild(el);
+							}
+							el = document.createElement("a");
+							el.setAttribute("href", p["Path"]);
+							el.appendChild(document.createTextNode(p["Name"]));
+							li.appendChild(el);
+							list.appendChild(li);
+						});
+						panel.appendChild(list);
+						results.appendChild(panel);
+
+						if (products.length > 3)
 						{
-							el = document.createElement("p");
-							el.appendChild(document.createTextNode("More"));
-							results.appendChild(el);
+							var btn = document.createElement("button");
+							btn.className = "btn btn-primary";
+							btn.appendChild(document.createTextNode("Show all"));
+							btn.onclick = function() {
+								var lst = $('#vendors-list')[0];
+								_.each(lst.childNodes, function(p) {
+									p.style.display = "list-item";
+								});
+								this.style.display = "none";
+							}
+							results.appendChild(btn);
 						}
 					}
 				}
@@ -133,7 +191,9 @@
 		</script>
 	</head>
 	<body>
-		<input type="text" name="q" id="q" title="Enter any product or vendor name." onkeyup="KeyEvent();" />
-		<div id="results"></div>
+		<div class="container">
+			<input type="text" class="form-control" name="q" id="queryField" title="Enter any product or vendor name." onkeyup="KeyEvent();" />
+			<div id="results"></div>
+		</div>
 	</body>
 </html>
