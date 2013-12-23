@@ -49,23 +49,23 @@
 					q: elem.value,
 				},
 				onFailure: function(response) {
-					var alert = document.createElement("div");
+					var al = document.createElement("div");
 					var el = document.createElement("button");
 
-					alert.className = "alert alert-block";
+					al.className = "alert alert-block";
 					el.setAttribute("type", "button");
 					el.className = "close";
 					el.setAttribute("data-dismiss", "alert");
 					el.innerHTML = "&times;";
-					alert.appendChild(el);
+					al.appendChild(el);
 
 					el = document.createElement("h4");
 					el.appendChild(document.createTextNode("Error retrieving products"));
-					alert.appendChild(el);
+					al.appendChild(el);
 
-					alert.appendChild(document.createTextNode("Error fetching data: "));
-					alert.appendChild(document.createTextNode(response.statusText));
-					document.appendChild(alert);
+					al.appendChild(document.createTextNode("Error fetching data: "));
+					al.appendChild(document.createTextNode(response.statusText));
+					document.appendChild(al);
 				},
 				onSuccess: function(response) {
 					var results = $('#results')[0];
