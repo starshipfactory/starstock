@@ -41,11 +41,34 @@
 
 			prevsearch = elem.value;
 
+			elem.className = "search-query input-xlarge muted";
+			elem.setAttribute("disabled", "disabled");
+
 			new Ajax.Request('/api/products?q=' + encodeURIComponent(elem.value), {
+				onFailure: function(response) {
+					var alert = document.createElement("div");
+					var el = document.createElement("button");
+
+					alert.className = "alert alert-block";
+					el.setAttribute("type", "button");
+					el.className = "close";
+					el.setAttribute("data-dismiss", "alert");
+					el.innerHTML = "&times;";
+					alert.appendChild(el);
+
+					el = document.createElement("h4");
+					el.appendChild(document.createTextNode("Error retrieving products"));
+					alert.appendChild(el);
+
+					alert.appendChild(document.createTextNode("Error fetching data: "));
+					alert.appendChild(document.createTextNode(response.statusText));
+					document.appendChild(alert);
+				},
 				onSuccess: function(response) {
 					var results = $('#results')[0];
 					var products = response.responseJSON["Products"];
 					var vendors = response.responseJSON["Vendors"];
+					var addbtn = document.createElement("a");
 
 					while (results.hasChildNodes())
 						results.removeChild(results.firstChild);
@@ -184,6 +207,17 @@
 							results.appendChild(btn);
 						}
 					}
+
+					addbtn.className = "btn btn-primary";
+					addbtn.setAttribute("role", "button");
+					addbtn.setAttribute("data-toggle", "modal");
+					addbtn.setAttribute("href", "#addItem");
+					addbtn.appendChild(document.createTextNode("Add an item \"" + elem.value + "\""));
+					results.appendChild(document.createElement("br"));
+					results.appendChild(addbtn);
+
+					elem.className = "search-query input-xlarge";
+					elem.removeAttribute("disabled");
 				}
 			});
 		}
@@ -192,8 +226,21 @@
 	</head>
 	<body>
 		<div class="container">
-			<input type="text" class="form-control" name="q" id="queryField" title="Enter any product or vendor name." onkeyup="KeyEvent();" />
+			<input type="text" class="search-query input-xlarge" name="q" id="queryField" title="Enter any product or vendor name." onkeyup="KeyEvent();" placeholder="Product or vendor name, or barcode scan." />
 			<div id="results"></div>
+		</div>
+		<div id="addItem" class="modal hide fade" tabindex="-1" role="dialog" aria-labelledby="addItemLabel" aria-hidden="true">
+			<div class="modal-header">
+				<button type="button" class="close" data-dismiss="modal" aria-hidden="true">&times;</button>
+				<h3 id="addItemLabel">Modal header</h3>
+			</div>
+			<div class="modal-body">
+				asdf
+			</div>
+			<div class="modal-footer">
+				<button class="btn" data-dismiss="modal" aria-hidden="true">Close</button>
+				<button class="btn btn-primary">Save changes</button>
+			</div>
 		</div>
 	</body>
 </html>
