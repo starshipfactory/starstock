@@ -32,11 +32,13 @@
 package main
 
 import (
+	"database/cassandra"
 	"flag"
 	"html/template"
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"ancient-solutions.com/ancientauth"
 	"ancient-solutions.com/doozer/exportedservice"
@@ -48,10 +50,13 @@ func main() {
 	var lockserv, lockboot, servicename string
 	var ca, pub, priv, authserver string
 	var requested_scope string
+	var dbserver, keyspace string
 	var searchif_tmpl *template.Template
 	var permission_denied_tmpl *template.Template
 	var exporter *exportedservice.ServiceExporter
 	var authenticator *ancientauth.Authenticator
+	var client *cassandra.RetryCassandraClient
+	var ire *cassandra.InvalidRequestException
 	var err error
 
 	flag.BoolVar(&help, "help", false, "Display help")
@@ -78,6 +83,10 @@ func main() {
 		"", "Service name to publish as to the lock server")
 	flag.StringVar(&requested_scope, "scope",
 		"staff", "People need to be in this scope to use the application")
+	flag.StringVar(&dbserver, "cassandra-server", "localhost:9160",
+		"Cassandra database server to use")
+	flag.StringVar(&keyspace, "keyspace", "starstock",
+		"Cassandra keyspace to use for accessing stock data")
 	flag.Parse()
 
 	if help {
@@ -109,11 +118,32 @@ func main() {
 		log.Fatal("NewAuthenticator: ", err)
 	}
 
+	// Connect to the Cassandra server.
+	client, err = cassandra.NewRetryCassandraClientTimeout(dbserver,
+		10*time.Second)
+	if err != nil {
+		log.Fatal("Error opening connection to ", dbserver, ": ", err)
+	}
+
+	ire, err = client.SetKeyspace(keyspace)
+	if ire != nil {
+		log.Fatal("Error setting keyspace to ", keyspace, ": ", ire.Why)
+	}
+	if err != nil {
+		log.Fatal("Error setting keyspace to ", keyspace, ": ", err)
+	}
+
 	// Register the URL handler to be invoked.
 	http.Handle("/css/", http.FileServer(http.Dir(template_dir)))
 	http.Handle("/js/", http.FileServer(http.Dir(template_dir)))
+	http.Handle("/api/add-product", &ProductAddAPI{
+		authenticator: authenticator,
+		client:        client,
+		scope:         requested_scope,
+	})
 	http.Handle("/api/products", &ProductSearchAPI{
 		authenticator: authenticator,
+		client:        client,
 		scope:         requested_scope,
 	})
 	http.Handle("/", &ProductSearchForm{

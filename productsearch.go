@@ -32,6 +32,7 @@
 package main
 
 import (
+	"database/cassandra"
 	"encoding/json"
 	"expvar"
 	"html/template"
@@ -79,6 +80,7 @@ type ProductSearchForm struct {
 
 type ProductSearchAPI struct {
 	authenticator *ancientauth.Authenticator
+	client        *cassandra.RetryCassandraClient
 	scope         string
 }
 
@@ -116,6 +118,16 @@ func (self *ProductSearchAPI) ServeHTTP(w http.ResponseWriter, req *http.Request
 	var res CategorizedSearchResult
 
 	numRequests.Add(1)
+	numAPIRequests.Add(1)
+
+	// Check the user is in the reqeuested scope.
+	if !self.authenticator.IsAuthenticatedScope(req, self.scope) {
+		numDisallowedScope.Add(1)
+		http.Error(w,
+			"You are not in the right group to access this resource",
+			http.StatusForbidden)
+		return
+	}
 
 	if len(query) >= 3 {
 		var r SearchResult

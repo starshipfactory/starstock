@@ -1,0 +1,5 @@
+package main;
+
+message Barcodes {
+	repeated string barcode = 1;
+}

@@ -221,6 +221,51 @@
 
 					elem.className = "search-query input-xlarge";
 					elem.removeAttribute("disabled");
+
+					$('#add-prodname')[0].value = elem.value;
+				}
+			});
+		}
+
+		function AddProduct()
+		{
+			var prodname = $('#add-prodname')[0];
+			var barcode = $('#add-barcode')[0];
+
+			// TODO(caoimhe): notify the user about the error somehow.
+			if (prodname.value.length <= 0)
+				return;
+
+			new Ajax.Request('/api/add-product', {
+				parameters: {
+					prodname: prodname.value,
+					barcode: barcode.value
+				},
+				onFailure: function(response) {
+					var al = document.createElement("div");
+					var el = document.createElement("button");
+
+					al.className = "alert alert-block";
+					el.setAttribute("type", "button");
+					el.className = "close";
+					el.setAttribute("data-dismiss", "alert");
+					el.innerHTML = "&times;";
+					al.appendChild(el);
+
+					el = document.createElement("h4");
+					el.appendChild(document.createTextNode("Error adding product"));
+					al.appendChild(el);
+
+					al.appendChild(document.createTextNode("Error fetching data: "));
+					al.appendChild(document.createTextNode(response.statusText));
+					document.appendChild(al);
+				},
+				onSuccess: function(response) {
+					prevsearch = '';
+					prodname.value = '';
+					barcode.value = '';
+					$('#addItem').modal('hide');
+					KeyEvent();
 				}
 			});
 		}
@@ -238,11 +283,15 @@
 				<h3 id="addItemLabel">Modal header</h3>
 			</div>
 			<div class="modal-body">
-				asdf
+				<label for="add-prodname">Product name:</label>
+				<input type="text" id="add-prodname" title="Please enter a product name here. Make sure it's not a duplicate." />
+				<br/>
+				<label for="add-barcode">Example barcode:</label>
+				<input type="text" id="add-barcode" title="If you have an example barcode, add it here." />
 			</div>
 			<div class="modal-footer">
 				<button class="btn" data-dismiss="modal" aria-hidden="true">Close</button>
-				<button class="btn btn-primary">Save changes</button>
+				<button class="btn btn-primary" onclick="AddProduct();">Save changes</button>
 			</div>
 		</div>
 	</body>
