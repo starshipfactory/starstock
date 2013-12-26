@@ -303,54 +303,58 @@ func (self *ProductSearchAPI) ServeHTTP(w http.ResponseWriter, req *http.Request
 		}
 
 		// Now, fetch all the product names for products we spotted above.
-		cp.ColumnFamily = "products"
-		pred.ColumnNames = [][]byte{[]byte("name")}
-		colmap, ire, ue, te, err = self.client.MultigetSlice(
-			product_results, cp, pred, cassandra.ConsistencyLevel_ONE)
-		if ire != nil {
-			log.Print("Error fetching products: ", ire.Why)
-			numCassandraErrors.Add("invalid-request", 1)
-			http.Error(w, ire.Why, http.StatusInternalServerError)
-			return
-		}
-		if ue != nil {
-			log.Print("Cassandra unavailable when fetching products")
-			numCassandraErrors.Add("invalid-request", 1)
-			http.Error(w, "Database unavailable", http.StatusInternalServerError)
-			return
-		}
-		if te != nil {
-			log.Print("Cassandra timed out when fetching products")
-			numCassandraErrors.Add("timeout", 1)
-			http.Error(w, "Database timed out", http.StatusInternalServerError)
-			return
-		}
-		if err != nil {
-			log.Print("OS error when fetching products: ", err)
-			numCassandraErrors.Add("generic-error", 1)
-			http.Error(w, "OS error talking to database",
-				http.StatusInternalServerError)
-			return
-		}
+		if len(product_results) > 0 {
+			cp.ColumnFamily = "products"
+			pred.ColumnNames = [][]byte{[]byte("name")}
+			colmap, ire, ue, te, err = self.client.MultigetSlice(
+				product_results, cp, pred, cassandra.ConsistencyLevel_ONE)
+			if ire != nil {
+				log.Print("Error fetching products: ", ire.Why)
+				numCassandraErrors.Add("invalid-request", 1)
+				http.Error(w, ire.Why, http.StatusInternalServerError)
+				return
+			}
+			if ue != nil {
+				log.Print("Cassandra unavailable when fetching products")
+				numCassandraErrors.Add("invalid-request", 1)
+				http.Error(w, "Database unavailable",
+					http.StatusInternalServerError)
+				return
+			}
+			if te != nil {
+				log.Print("Cassandra timed out when fetching products")
+				numCassandraErrors.Add("timeout", 1)
+				http.Error(w, "Database timed out",
+					http.StatusInternalServerError)
+				return
+			}
+			if err != nil {
+				log.Print("OS error when fetching products: ", err)
+				numCassandraErrors.Add("generic-error", 1)
+				http.Error(w, "OS error talking to database",
+					http.StatusInternalServerError)
+				return
+			}
 
-		for key, cscv := range colmap {
-			for _, csc := range cscv {
-				var col *cassandra.Column = csc.Column
-				if col == nil || !col.IsSetValue() {
-					continue
+			for key, cscv := range colmap {
+				for _, csc := range cscv {
+					var col *cassandra.Column = csc.Column
+					if col == nil || !col.IsSetValue() {
+						continue
+					}
+
+					if string(col.Name) != "name" {
+						log.Print("Cassandra returned additional column ",
+							string(col.Name), " (", col.Name, ") for row ",
+							key, " (", []byte(key), ")")
+						continue
+					}
+
+					r = new(SearchResult)
+					r.Name = string(col.Value)
+					r.Path = "/product/" + UUID2String([]byte(key))
+					res.Products = append(res.Products, r)
 				}
-
-				if string(col.Name) != "name" {
-					log.Print("Cassandra returned additional column ",
-						string(col.Name), " (", col.Name, ") for row ",
-						key, " (", []byte(key), ")")
-					continue
-				}
-
-				r = new(SearchResult)
-				r.Name = string(col.Value)
-				r.Path = "/product/" + UUID2String([]byte(key))
-				res.Products = append(res.Products, r)
 			}
 		}
 
