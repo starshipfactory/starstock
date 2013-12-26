@@ -35,6 +35,7 @@ import (
 	"database/cassandra"
 	"encoding/json"
 	"expvar"
+	"fmt"
 	"html/template"
 	"log"
 	"net/http"
@@ -52,8 +53,8 @@ type SearchResult struct {
 // Search results with different categories of results.
 // They are separated so they can be grouped together.
 type CategorizedSearchResult struct {
-	Products []SearchResult
-	Vendors  []SearchResult
+	Products []*SearchResult
+	Vendors  []*SearchResult
 }
 
 // Total number of requests received.
@@ -71,6 +72,9 @@ var numJSONMarshalErrors *expvar.Int = expvar.NewInt("num-json-marshalling-error
 // Map of HTTP write errors by type.
 var numHTTPWriteErrors *expvar.Map = expvar.NewMap("num-http-write-errors")
 
+// Map of Cassandra errors by type.
+var numCassandraErrors *expvar.Map = expvar.NewMap("num-cassandra-errors")
+
 type ProductSearchForm struct {
 	authenticator        *ancientauth.Authenticator
 	permissionDeniedTmpl *template.Template
@@ -82,6 +86,41 @@ type ProductSearchAPI struct {
 	authenticator *ancientauth.Authenticator
 	client        *cassandra.RetryCassandraClient
 	scope         string
+}
+
+func UUID2String(uuid []byte) string {
+	var ret string
+	var i int
+
+	for i = 0; i < 4; i++ {
+		ret += fmt.Sprintf("%02X", uuid[i])
+	}
+
+	ret += "-"
+
+	for i = 4; i < 6; i++ {
+		ret += fmt.Sprintf("%02X", uuid[i])
+	}
+
+	ret += "-"
+
+	for i = 6; i < 8; i++ {
+		ret += fmt.Sprintf("%02X", uuid[i])
+	}
+
+	ret += "-"
+
+	for i = 8; i < 12; i++ {
+		ret += fmt.Sprintf("%02X", uuid[i])
+	}
+
+	ret += "-"
+
+	for i = 12; i < len(uuid); i++ {
+		ret += fmt.Sprintf("%02X", uuid[i])
+	}
+
+	return ret
 }
 
 func (self *ProductSearchForm) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -130,37 +169,100 @@ func (self *ProductSearchAPI) ServeHTTP(w http.ResponseWriter, req *http.Request
 	}
 
 	if len(query) >= 3 {
-		var r SearchResult
+		var cp *cassandra.ColumnParent = cassandra.NewColumnParent()
+		var pred *cassandra.SlicePredicate = cassandra.NewSlicePredicate()
+		var kr *cassandra.KeyRange = cassandra.NewKeyRange()
+		var slices []*cassandra.KeySlice
+		var ire *cassandra.InvalidRequestException
+		var ue *cassandra.UnavailableException
+		var te *cassandra.TimedOutException
+		var endkey []byte = []byte(query)
+		var r *SearchResult
+		var pos int = len(endkey) - 1
+
+		// Handle overflows
+		for endkey[pos] == 255 && pos > 0 {
+			endkey[pos] = 0
+			pos--
+		}
+
+		// Produce endkey by incrementing the last byte of the start key.
+		endkey[pos]++
+
+		// Search for projects with the given name.
+		cp.ColumnFamily = "products_byname"
+		pred.ColumnNames = [][]byte{[]byte("product")}
+
+		kr.StartKey = []byte(query)
+		kr.EndKey = endkey
+		kr.Count = 32 // Limit to 32 results.
+
+		slices, ire, ue, te, err = self.client.GetRangeSlices(
+			cp, pred, kr, cassandra.ConsistencyLevel_ONE)
+		if ire != nil {
+			log.Print("Error fetching products_byname: ", ire.Why)
+			numCassandraErrors.Add("invalid-request", 1)
+			http.Error(w, ire.Why, http.StatusInternalServerError)
+			return
+		}
+		if ue != nil {
+			log.Print("Cassandra unavailable when fetching products_byname")
+			numCassandraErrors.Add("invalid-request", 1)
+			http.Error(w, "Database unavailable", http.StatusInternalServerError)
+			return
+		}
+		if te != nil {
+			log.Print("Cassandra timed out when fetching products_byname")
+			numCassandraErrors.Add("timeout", 1)
+			http.Error(w, "Database timed out", http.StatusInternalServerError)
+			return
+		}
+		if err != nil {
+			log.Print("OS error when fetching products_byname: ", err)
+			numCassandraErrors.Add("generic-error", 1)
+			http.Error(w, "OS error talking to database",
+				http.StatusInternalServerError)
+			return
+		}
+
+		for _, slice := range slices {
+			for _, csc := range slice.Columns {
+				var col *cassandra.Column = csc.Column
+				if col == nil || !col.IsSetValue() {
+					continue
+				}
+
+				if string(col.Name) != "product" {
+					log.Print("Bizarre products_byname row ",
+						string(slice.Key), " (", slice.Key, "), has ",
+						string(col.Name), " (", col.Name, ")")
+					continue
+				}
+
+				r = new(SearchResult)
+				r.Name = string(slice.Key)
+				r.Path = "/product/" + UUID2String(col.Value)
+				res.Products = append(res.Products, r)
+			}
+		}
 
 		// TODO(caoimhe): stub
-		r.Name = "Foo"
-		r.Path = "/product/foo"
-		res.Products = append(res.Products, r)
-
-		r.Name = "Bar"
-		r.Path = "/product/bar"
-		res.Products = append(res.Products, r)
-
-		r.Name = "Baz"
-		r.Path = "/product/baz"
-		res.Products = append(res.Products, r)
-
-		r.Name = "Quux"
-		r.Path = "/product/quux"
-		res.Products = append(res.Products, r)
-
+		r = new(SearchResult)
 		r.Name = "ACME Inc."
 		r.Path = "/vendor/acme"
 		res.Vendors = append(res.Vendors, r)
 
+		r = new(SearchResult)
 		r.Name = "Starship Factory"
 		r.Path = "/vendor/starshipfactory"
 		res.Vendors = append(res.Vendors, r)
 
+		r = new(SearchResult)
 		r.Name = "RaumZeitLabor e.V."
 		r.Path = "/vendor/rzl"
 		res.Vendors = append(res.Vendors, r)
 
+		r = new(SearchResult)
 		r.Name = "Doctor in the TARDIS"
 		r.Path = "/vendor/doctor"
 		res.Vendors = append(res.Vendors, r)
