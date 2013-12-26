@@ -169,9 +169,11 @@ func (self *ProductSearchAPI) ServeHTTP(w http.ResponseWriter, req *http.Request
 	}
 
 	if len(query) >= 3 {
+		var product_results [][]byte
 		var cp *cassandra.ColumnParent = cassandra.NewColumnParent()
 		var pred *cassandra.SlicePredicate = cassandra.NewSlicePredicate()
 		var kr *cassandra.KeyRange = cassandra.NewKeyRange()
+		var colmap map[string][]*cassandra.ColumnOrSuperColumn
 		var slices []*cassandra.KeySlice
 		var ire *cassandra.InvalidRequestException
 		var ue *cassandra.UnavailableException
@@ -242,6 +244,112 @@ func (self *ProductSearchAPI) ServeHTTP(w http.ResponseWriter, req *http.Request
 				r = new(SearchResult)
 				r.Name = string(slice.Key)
 				r.Path = "/product/" + UUID2String(col.Value)
+				res.Products = append(res.Products, r)
+			}
+		}
+
+		// Search for projects with the given name.
+		cp.ColumnFamily = "products_bybarcode"
+		pred.ColumnNames = [][]byte{[]byte("product")}
+
+		kr.StartKey = []byte(query)
+		kr.EndKey = endkey
+		kr.Count = 32 // Limit to 32 results.
+
+		slices, ire, ue, te, err = self.client.GetRangeSlices(
+			cp, pred, kr, cassandra.ConsistencyLevel_ONE)
+		if ire != nil {
+			log.Print("Error fetching products_bybarcode: ", ire.Why)
+			numCassandraErrors.Add("invalid-request", 1)
+			http.Error(w, ire.Why, http.StatusInternalServerError)
+			return
+		}
+		if ue != nil {
+			log.Print("Cassandra unavailable when fetching products_bybarcode")
+			numCassandraErrors.Add("invalid-request", 1)
+			http.Error(w, "Database unavailable", http.StatusInternalServerError)
+			return
+		}
+		if te != nil {
+			log.Print("Cassandra timed out when fetching products_bybarcode")
+			numCassandraErrors.Add("timeout", 1)
+			http.Error(w, "Database timed out", http.StatusInternalServerError)
+			return
+		}
+		if err != nil {
+			log.Print("OS error when fetching products_bybarcode: ", err)
+			numCassandraErrors.Add("generic-error", 1)
+			http.Error(w, "OS error talking to database",
+				http.StatusInternalServerError)
+			return
+		}
+
+		for _, slice := range slices {
+			for _, csc := range slice.Columns {
+				var col *cassandra.Column = csc.Column
+				if col == nil || !col.IsSetValue() {
+					continue
+				}
+
+				if string(col.Name) != "product" {
+					log.Print("Bizarre products_bybarcode row ",
+						string(slice.Key), " (", slice.Key, "), has ",
+						string(col.Name), " (", col.Name, ")")
+					continue
+				}
+
+				product_results = append(product_results, col.Value)
+			}
+		}
+
+		// Now, fetch all the product names for products we spotted above.
+		cp.ColumnFamily = "products"
+		pred.ColumnNames = [][]byte{[]byte("name")}
+		colmap, ire, ue, te, err = self.client.MultigetSlice(
+			product_results, cp, pred, cassandra.ConsistencyLevel_ONE)
+		if ire != nil {
+			log.Print("Error fetching products: ", ire.Why)
+			numCassandraErrors.Add("invalid-request", 1)
+			http.Error(w, ire.Why, http.StatusInternalServerError)
+			return
+		}
+		if ue != nil {
+			log.Print("Cassandra unavailable when fetching products")
+			numCassandraErrors.Add("invalid-request", 1)
+			http.Error(w, "Database unavailable", http.StatusInternalServerError)
+			return
+		}
+		if te != nil {
+			log.Print("Cassandra timed out when fetching products")
+			numCassandraErrors.Add("timeout", 1)
+			http.Error(w, "Database timed out", http.StatusInternalServerError)
+			return
+		}
+		if err != nil {
+			log.Print("OS error when fetching products: ", err)
+			numCassandraErrors.Add("generic-error", 1)
+			http.Error(w, "OS error talking to database",
+				http.StatusInternalServerError)
+			return
+		}
+
+		for key, cscv := range colmap {
+			for _, csc := range cscv {
+				var col *cassandra.Column = csc.Column
+				if col == nil || !col.IsSetValue() {
+					continue
+				}
+
+				if string(col.Name) != "name" {
+					log.Print("Cassandra returned additional column ",
+						string(col.Name), " (", col.Name, ") for row ",
+						key, " (", []byte(key), ")")
+					continue
+				}
+
+				r = new(SearchResult)
+				r.Name = string(col.Value)
+				r.Path = "/product/" + UUID2String([]byte(key))
 				res.Products = append(res.Products, r)
 			}
 		}
