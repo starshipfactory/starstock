@@ -136,6 +136,11 @@ func main() {
 	// Register the URL handler to be invoked.
 	http.Handle("/css/", http.FileServer(http.Dir(template_dir)))
 	http.Handle("/js/", http.FileServer(http.Dir(template_dir)))
+	http.Handle("/api/product", &ProductViewAPI{
+		authenticator: authenticator,
+		client:        client,
+		scope:         requested_scope,
+	})
 	http.Handle("/api/edit-product", &ProductEditAPI{
 		authenticator: authenticator,
 		client:        client,

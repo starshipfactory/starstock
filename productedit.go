@@ -33,11 +33,10 @@ package main
 
 import (
 	"bytes"
-	"crypto/rand"
 	"database/cassandra"
 	"encoding/binary"
+	"encoding/json"
 	"expvar"
-	"io"
 	"log"
 	"net/http"
 	"regexp"
@@ -48,10 +47,25 @@ import (
 	"code.google.com/p/goprotobuf/proto"
 )
 
-const NUM_100NS_INTERVALS_SINCE_UUID_EPOCH = 0x01b21dd213814000
+// Number of errors which occurred viewing products, mapped by type.
+var productViewErrors *expvar.Map = expvar.NewMap("num-product-view-errors")
 
 // Number of errors which occurred editing products, mapped by type.
 var productEditErrors *expvar.Map = expvar.NewMap("num-product-edit-errors")
+
+type Product struct {
+	Name     string
+	Price    float64
+	Barcodes []string
+	VendorId string
+	Stock    int64
+}
+
+type ProductViewAPI struct {
+	authenticator *ancientauth.Authenticator
+	client        *cassandra.RetryCassandraClient
+	scope         string
+}
 
 type ProductEditAPI struct {
 	authenticator *ancientauth.Authenticator
@@ -59,34 +73,138 @@ type ProductEditAPI struct {
 	scope         string
 }
 
-func GenTimeUUID(when *time.Time) ([]byte, error) {
-	var uuid *bytes.Buffer = new(bytes.Buffer)
-	var stamp int64 = when.UnixNano()/100 + NUM_100NS_INTERVALS_SINCE_UUID_EPOCH
-	var stampLow int64 = stamp & 0xffffffff
-	var stampMid int64 = stamp & 0xffff00000000
-	var stampHi int64 = stamp & 0xfff000000000000
+func (self *ProductViewAPI) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	var cp *cassandra.ColumnParent
+	var pred *cassandra.SlicePredicate
+	var res []*cassandra.ColumnOrSuperColumn
+	var csc *cassandra.ColumnOrSuperColumn
+	var ire *cassandra.InvalidRequestException
+	var ue *cassandra.UnavailableException
+	var te *cassandra.TimedOutException
+	var prod Product
 	var err error
+	var uuidstr string = req.FormValue("id")
+	var ts int64 = 0
+	var uuid UUID
 
-	var upper int64 = (stampLow << 32) | (stampMid >> 16) | (1 << 12) |
-		(stampHi >> 48)
+	var rawdata []byte
 
-	err = binary.Write(uuid, binary.LittleEndian, upper)
-	if err != nil {
-		return []byte{}, err
+	numRequests.Add(1)
+	numAPIRequests.Add(1)
+
+	// Check the user is in the reqeuested scope.
+	if !self.authenticator.IsAuthenticatedScope(req, self.scope) {
+		numDisallowedScope.Add(1)
+		http.Error(w,
+			"You are not in the right group to access this resource",
+			http.StatusForbidden)
+		return
 	}
-	uuid.WriteByte(0xC0)
-	uuid.WriteByte(0x00)
 
-	_, err = io.CopyN(uuid, rand.Reader, 6)
-	if err != nil {
-		return []byte{}, err
+	if len(uuidstr) <= 0 {
+		http.Error(w, "Requested UUID empty", http.StatusNotAcceptable)
+		return
 	}
 
-	return uuid.Bytes(), nil
+	uuid, err = ParseUUID(uuidstr)
+	if err != nil {
+		http.Error(w, "Requested UUID invalid", http.StatusNotAcceptable)
+		return
+	}
+
+	cp = cassandra.NewColumnParent()
+	cp.ColumnFamily = "products"
+
+	pred = cassandra.NewSlicePredicate()
+	pred.ColumnNames = [][]byte{
+		[]byte("name"), []byte("price"), []byte("vendor"),
+		[]byte("barcodes"), []byte("stock"),
+	}
+
+	res, ire, ue, te, err = self.client.GetSlice([]byte(uuid), cp, pred,
+		cassandra.ConsistencyLevel_ONE)
+	if ire != nil {
+		log.Print("Invalid request: ", ire.Why)
+		productViewErrors.Add(ire.Why, 1)
+		return
+	}
+	if ue != nil {
+		log.Print("Unavailable")
+		productViewErrors.Add("unavailable", 1)
+		return
+	}
+	if te != nil {
+		log.Print("Request to database backend timed out")
+		productViewErrors.Add("timeout", 1)
+		return
+	}
+	if err != nil {
+		log.Print("Generic error: ", err)
+		productViewErrors.Add(err.Error(), 1)
+		return
+	}
+
+	for _, csc = range res {
+		var col = csc.Column
+		var cname string
+		if !csc.IsSetColumn() {
+			continue
+		}
+
+		cname = string(col.Name)
+		if col.IsSetTimestamp() && col.Timestamp > ts {
+			ts = col.Timestamp
+		}
+
+		if cname == "name" {
+			prod.Name = string(col.Value)
+		} else if cname == "price" {
+			var buf *bytes.Buffer = bytes.NewBuffer(col.Value)
+			err = binary.Read(buf, binary.LittleEndian, &prod.Price)
+			if err != nil {
+				log.Print("Row ", uuid.String(), " price is invalid")
+				productViewErrors.Add("corrupted-price", 1)
+			}
+		} else if cname == "vendor" {
+			prod.VendorId = UUID(col.Value).String()
+		} else if cname == "barcodes" {
+			var bc Barcodes
+			err = proto.Unmarshal(col.Value, &bc)
+			if err != nil {
+				log.Print("Row ", uuid.String(), " barcode is invalid")
+				productViewErrors.Add("corrupted-barcode", 1)
+				return
+			}
+		} else if cname == "stock" {
+			var buf *bytes.Buffer = bytes.NewBuffer(col.Value)
+			err = binary.Read(buf, binary.BigEndian, &prod.Stock)
+			if err != nil {
+				log.Print("Row ", uuid.String(), " stock is invalid")
+				productViewErrors.Add("corrupted-stock", 1)
+			}
+		}
+	}
+
+	rawdata, err = json.Marshal(prod)
+	if err != nil {
+		log.Print("Error marshalling JSON: ", err)
+		numJSONMarshalErrors.Add(1)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Add("Content-type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, err = w.Write(rawdata)
+	if err != nil {
+		log.Print("Error writing JSON response: ", err)
+		numHTTPWriteErrors.Add(err.Error(), 1)
+	}
 }
 
 func (self *ProductEditAPI) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	var uuid []byte
+	var specid string = req.PostFormValue("id")
+	var uuid UUID
 	var mmap map[string]map[string][]*cassandra.Mutation
 	var mutations []*cassandra.Mutation
 	var mutation *cassandra.Mutation
@@ -165,7 +283,13 @@ func (self *ProductEditAPI) ServeHTTP(w http.ResponseWriter, req *http.Request) 
 		mutations = append(mutations, mutation)
 	}
 
-	uuid, err = GenTimeUUID(&now)
+	// If we're editing an existing product, re-use that UUID. Otherwise,
+	// generate one.
+	if len(specid) > 0 {
+		uuid, err = ParseUUID(specid)
+	} else {
+		uuid, err = GenTimeUUID(&now)
+	}
 	if err != nil {
 		productEditErrors.Add(err.Error(), 1)
 		http.Error(w, err.Error(), http.StatusInternalServerError)

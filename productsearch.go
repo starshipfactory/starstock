@@ -35,7 +35,6 @@ import (
 	"database/cassandra"
 	"encoding/json"
 	"expvar"
-	"fmt"
 	"html/template"
 	"log"
 	"net/http"
@@ -47,7 +46,7 @@ import (
 type SearchResult struct {
 	Name    string
 	Picture string
-	Path    string
+	Uuid    string
 }
 
 // Search results with different categories of results.
@@ -86,41 +85,6 @@ type ProductSearchAPI struct {
 	authenticator *ancientauth.Authenticator
 	client        *cassandra.RetryCassandraClient
 	scope         string
-}
-
-func UUID2String(uuid []byte) string {
-	var ret string
-	var i int
-
-	for i = 0; i < 4; i++ {
-		ret += fmt.Sprintf("%02X", uuid[i])
-	}
-
-	ret += "-"
-
-	for i = 4; i < 6; i++ {
-		ret += fmt.Sprintf("%02X", uuid[i])
-	}
-
-	ret += "-"
-
-	for i = 6; i < 8; i++ {
-		ret += fmt.Sprintf("%02X", uuid[i])
-	}
-
-	ret += "-"
-
-	for i = 8; i < 12; i++ {
-		ret += fmt.Sprintf("%02X", uuid[i])
-	}
-
-	ret += "-"
-
-	for i = 12; i < len(uuid); i++ {
-		ret += fmt.Sprintf("%02X", uuid[i])
-	}
-
-	return ret
 }
 
 func (self *ProductSearchForm) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -243,7 +207,7 @@ func (self *ProductSearchAPI) ServeHTTP(w http.ResponseWriter, req *http.Request
 
 				r = new(SearchResult)
 				r.Name = string(slice.Key)
-				r.Path = "/product/" + UUID2String(col.Value)
+				r.Uuid = UUID(col.Value).String()
 				res.Products = append(res.Products, r)
 			}
 		}
@@ -352,7 +316,7 @@ func (self *ProductSearchAPI) ServeHTTP(w http.ResponseWriter, req *http.Request
 
 					r = new(SearchResult)
 					r.Name = string(col.Value)
-					r.Path = "/product/" + UUID2String([]byte(key))
+					r.Uuid = UUID([]byte(key)).String()
 					res.Products = append(res.Products, r)
 				}
 			}
@@ -361,22 +325,22 @@ func (self *ProductSearchAPI) ServeHTTP(w http.ResponseWriter, req *http.Request
 		// TODO(caoimhe): stub
 		r = new(SearchResult)
 		r.Name = "ACME Inc."
-		r.Path = "/vendor/acme"
+		r.Uuid = "/vendor/acme"
 		res.Vendors = append(res.Vendors, r)
 
 		r = new(SearchResult)
 		r.Name = "Starship Factory"
-		r.Path = "/vendor/starshipfactory"
+		r.Uuid = "/vendor/starshipfactory"
 		res.Vendors = append(res.Vendors, r)
 
 		r = new(SearchResult)
 		r.Name = "RaumZeitLabor e.V."
-		r.Path = "/vendor/rzl"
+		r.Uuid = "/vendor/rzl"
 		res.Vendors = append(res.Vendors, r)
 
 		r = new(SearchResult)
 		r.Name = "Doctor in the TARDIS"
-		r.Path = "/vendor/doctor"
+		r.Uuid = "/vendor/doctor"
 		res.Vendors = append(res.Vendors, r)
 	}
 

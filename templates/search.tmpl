@@ -105,11 +105,10 @@
 							el.onclick = function(ev) {
 								if (!ev) ev = window.event;
 								el = ev.target;
-								LoadProduct(el.getAttribute("data-id"),
-									el.getAttribute("data-name"));
+								LoadProduct(el.getAttribute("data-id"));
 								return true;
 							}
-							el.setAttribute("data-id", p["Path"]);
+							el.setAttribute("data-id", p["Uuid"]);
 							el.setAttribute("data-name", p["Name"]);
 							el.href = "javascript:void(0);";
 							el.appendChild(document.createTextNode(p["Name"]));
@@ -132,11 +131,10 @@
 							el.onclick = function(ev) {
 								if (!ev) ev = window.event;
 								el = ev.target;
-								LoadProduct(el.getAttribute("data-id"),
-									el.getAttribute("data-name"));
+								LoadProduct(el.getAttribute("data-id"));
 								return true;
 							}
-							el.setAttribute("data-id", p["Path"]);
+							el.setAttribute("data-id", p["Uuid"]);
 							el.setAttribute("data-name", p["Name"]);
 							el.href = "javascript:void(0);";
 							el.appendChild(document.createTextNode(p["Name"]));
@@ -187,7 +185,7 @@
 								li.appendChild(el);
 							}
 							el = document.createElement("a");
-							el.setAttribute("href", p["Path"]);
+							el.setAttribute("href", p["Uuid"]);
 							el.appendChild(document.createTextNode(p["Name"]));
 							li.appendChild(el);
 							list.appendChild(li);
@@ -205,7 +203,7 @@
 								li.appendChild(el);
 							}
 							el = document.createElement("a");
-							el.setAttribute("href", p["Path"]);
+							el.setAttribute("href", p["Uuid"]);
 							el.appendChild(document.createTextNode(p["Name"]));
 							li.appendChild(el);
 							list.appendChild(li);
@@ -241,6 +239,7 @@
 					elem.className = "search-query input-xlarge";
 					elem.removeAttribute("disabled");
 
+					$('#edit-id')[0].value = '';
 					$('#edit-prodname')[0].value = elem.value;
 
 					var label = $('#editItemLabel')[0];
@@ -260,6 +259,7 @@
 
 						label.appendChild(document.createTextNode(
 							"Add product " + elem.value));
+						$('#edit-id')[0].value = '';
 						$('#edit-prodname')[0].value = elem.value;
 						$('#edit-barcode')[0].value = '';
 						$('#edit-count')[0].value = '1';
@@ -269,16 +269,49 @@
 			});
 		}
 
-		function LoadProduct(id, name) {
-			var label = $('#editItemLabel')[0];
-			while (label.hasChildNodes())
-				label.removeChild(label.firstChild);
+		function LoadProduct(id) {
+			new Ajax.Request('/api/product', {
+				parameters: {
+					id: id,
+				},
+				onFailure: function(response) {
+					var al = document.createElement("div");
+					var el = document.createElement("button");
 
-			label.appendChild(document.createTextNode(
-				"Edit product " + name));
+					al.className = "alert alert-block";
+					el.setAttribute("type", "button");
+					el.className = "close";
+					el.setAttribute("data-dismiss", "alert");
+					el.innerHTML = "&times;";
+					al.appendChild(el);
 
-			$('#edit-prodname')[0].value = name;
-			$('#editItem').modal('show');
+					el = document.createElement("h4");
+					el.appendChild(document.createTextNode("Error retrieving products"));
+					al.appendChild(el);
+
+					al.appendChild(document.createTextNode("Error fetching data: "));
+					al.appendChild(document.createTextNode(response.statusText));
+					document.appendChild(al);
+				},
+				onSuccess: function(response) {
+					var label = $('#editItemLabel')[0];
+
+					while (label.hasChildNodes())
+						label.removeChild(label.firstChild);
+
+					label.appendChild(document.createTextNode(
+						"Edit product " + name));
+
+					$('#edit-id')[0].value = id;
+					$('#edit-prodname')[0].value = response.responseJSON["Name"];
+					$('#edit-count')[0].value = response.responseJSON["Stock"];
+					$('#edit-price')[0].value = response.responseJSON["Price"];
+
+					// TODO(caoimhe): Do something with the barcodes.
+
+					$('#editItem').modal('show');
+				}
+			});
 		}
 
 		function EditProduct()
@@ -340,6 +373,7 @@
 				<h3 id="editItemLabel">Edit Product</h3>
 			</div>
 			<div class="modal-body">
+				<input type="hidden" id="edit-id" value="" />
 				<label for="edit-prodname">Product name:</label>
 				<input type="text" id="edit-prodname" title="Please enter a product name here. Make sure it's not a duplicate." />
 				<br/>
