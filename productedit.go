@@ -50,10 +50,10 @@ import (
 
 const NUM_100NS_INTERVALS_SINCE_UUID_EPOCH = 0x01b21dd213814000
 
-// Number of errors which occurred adding products, mapped by type.
-var productAddErrors *expvar.Map = expvar.NewMap("num-product-add-errors")
+// Number of errors which occurred editing products, mapped by type.
+var productEditErrors *expvar.Map = expvar.NewMap("num-product-edit-errors")
 
-type ProductAddAPI struct {
+type ProductEditAPI struct {
 	authenticator *ancientauth.Authenticator
 	client        *cassandra.RetryCassandraClient
 	scope         string
@@ -85,7 +85,7 @@ func GenTimeUUID(when *time.Time) ([]byte, error) {
 	return uuid.Bytes(), nil
 }
 
-func (self *ProductAddAPI) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+func (self *ProductEditAPI) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	var uuid []byte
 	var mmap map[string]map[string][]*cassandra.Mutation
 	var mutations []*cassandra.Mutation
@@ -125,12 +125,12 @@ func (self *ProductAddAPI) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if len(barcode) > 0 {
 		match, err = regexp.MatchString("^[0-9]+$", barcode)
 		if err != nil {
-			productAddErrors.Add(err.Error(), 1)
+			productEditErrors.Add(err.Error(), 1)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		if !match {
-			productAddErrors.Add("barcode-format-error", 1)
+			productEditErrors.Add("barcode-format-error", 1)
 			http.Error(w, "Barcode should only contain numbers",
 				http.StatusNotAcceptable)
 			return
@@ -154,7 +154,7 @@ func (self *ProductAddAPI) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		col.Name = []byte("barcodes")
 		col.Value, err = proto.Marshal(codes)
 		if err != nil {
-			productAddErrors.Add(err.Error(), 1)
+			productEditErrors.Add(err.Error(), 1)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -167,7 +167,7 @@ func (self *ProductAddAPI) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	uuid, err = GenTimeUUID(&now)
 	if err != nil {
-		productAddErrors.Add(err.Error(), 1)
+		productEditErrors.Add(err.Error(), 1)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -196,22 +196,22 @@ func (self *ProductAddAPI) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		cassandra.ConsistencyLevel_QUORUM)
 	if ire != nil {
 		log.Println("Invalid request: ", ire.Why)
-		productAddErrors.Add(ire.Why, 1)
+		productEditErrors.Add(ire.Why, 1)
 		return
 	}
 	if ue != nil {
 		log.Println("Unavailable")
-		productAddErrors.Add("unavailable", 1)
+		productEditErrors.Add("unavailable", 1)
 		return
 	}
 	if te != nil {
 		log.Println("Request to database backend timed out")
-		productAddErrors.Add("timeout", 1)
+		productEditErrors.Add("timeout", 1)
 		return
 	}
 	if err != nil {
 		log.Println("Generic error: ", err)
-		productAddErrors.Add(err.Error(), 1)
+		productEditErrors.Add(err.Error(), 1)
 		return
 	}
 }

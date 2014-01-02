@@ -71,7 +71,7 @@
 					var results = $('#results')[0];
 					var products = response.responseJSON["Products"];
 					var vendors = response.responseJSON["Vendors"];
-					var addbtn = document.createElement("a");
+					var editbtn = document.createElement("a");
 
 					while (results.hasChildNodes())
 						results.removeChild(results.firstChild);
@@ -102,7 +102,16 @@
 								li.appendChild(el);
 							}
 							el = document.createElement("a");
-							el.setAttribute("href", p["Path"]);
+							el.onclick = function(ev) {
+								if (!ev) ev = window.event;
+								el = ev.target;
+								LoadProduct(el.getAttribute("data-id"),
+									el.getAttribute("data-name"));
+								return true;
+							}
+							el.setAttribute("data-id", p["Path"]);
+							el.setAttribute("data-name", p["Name"]);
+							el.href = "javascript:void(0);";
 							el.appendChild(document.createTextNode(p["Name"]));
 							li.appendChild(el);
 							list.appendChild(li);
@@ -120,7 +129,16 @@
 								li.appendChild(el);
 							}
 							el = document.createElement("a");
-							el.setAttribute("href", p["Path"]);
+							el.onclick = function(ev) {
+								if (!ev) ev = window.event;
+								el = ev.target;
+								LoadProduct(el.getAttribute("data-id"),
+									el.getAttribute("data-name"));
+								return true;
+							}
+							el.setAttribute("data-id", p["Path"]);
+							el.setAttribute("data-name", p["Name"]);
+							el.href = "javascript:void(0);";
 							el.appendChild(document.createTextNode(p["Name"]));
 							li.appendChild(el);
 							list.appendChild(li);
@@ -211,32 +229,71 @@
 						}
 					}
 
-					addbtn.className = "btn btn-primary";
-					addbtn.setAttribute("role", "button");
-					addbtn.setAttribute("data-toggle", "modal");
-					addbtn.setAttribute("href", "#addItem");
-					addbtn.appendChild(document.createTextNode("Add an item \"" + elem.value + "\""));
+					editbtn.className = "btn btn-primary";
+					editbtn.setAttribute("role", "button");
+					editbtn.setAttribute("data-toggle", "modal");
+					editbtn.setAttribute("href", "#editItem");
+					editbtn.appendChild(document.createTextNode(
+						"Add an item \"" + elem.value + "\""));
 					results.appendChild(document.createElement("br"));
-					results.appendChild(addbtn);
+					results.appendChild(editbtn);
 
 					elem.className = "search-query input-xlarge";
 					elem.removeAttribute("disabled");
 
-					$('#add-prodname')[0].value = elem.value;
+					$('#edit-prodname')[0].value = elem.value;
+
+					var label = $('#editItemLabel')[0];
+					while (label.hasChildNodes())
+						label.removeChild(label.firstChild);
+
+					label.appendChild(document.createTextNode(
+						"Add product " + elem.value));
+
+					$('#editItem').on('hidden', function() {
+						// Reset the editItem editor to adding an item.
+						var elem = $('#queryField')[0];
+						var label = $('#editItemLabel')[0];
+
+						while (label.hasChildNodes())
+							label.removeChild(label.firstChild);
+
+						label.appendChild(document.createTextNode(
+							"Add product " + elem.value));
+						$('#edit-prodname')[0].value = elem.value;
+						$('#edit-barcode')[0].value = '';
+						$('#edit-count')[0].value = '1';
+						$('#edit-price')[0].value = '';
+					});
 				}
 			});
 		}
 
-		function AddProduct()
+		function LoadProduct(id, name) {
+			var label = $('#editItemLabel')[0];
+			while (label.hasChildNodes())
+				label.removeChild(label.firstChild);
+
+			label.appendChild(document.createTextNode(
+				"Edit product " + name));
+
+			$('#edit-prodname')[0].value = name;
+			$('#editItem').modal('show');
+		}
+
+		function EditProduct()
 		{
-			var prodname = $('#add-prodname')[0];
-			var barcode = $('#add-barcode')[0];
+			var prodname = $('#edit-prodname')[0];
+			var barcode = $('#edit-barcode')[0];
 
 			// TODO(caoimhe): notify the user about the error somehow.
 			if (prodname.value.length <= 0)
 				return;
 
-			new Ajax.Request('/api/add-product', {
+			while (label.childNodes.length > 0)
+				label.removeChild(label.firstChild);
+
+			new Ajax.Request('/api/edit-product', {
 				parameters: {
 					prodname: prodname.value,
 					barcode: barcode.value
@@ -253,7 +310,7 @@
 					al.appendChild(el);
 
 					el = document.createElement("h4");
-					el.appendChild(document.createTextNode("Error adding product"));
+					el.appendChild(document.createTextNode("Error editing product"));
 					al.appendChild(el);
 
 					al.appendChild(document.createTextNode("Error fetching data: "));
@@ -264,7 +321,7 @@
 					prevsearch = '';
 					prodname.value = '';
 					barcode.value = '';
-					$('#addItem').modal('hide');
+					$('#editItem').modal('hide');
 					KeyEvent();
 				}
 			});
@@ -277,21 +334,27 @@
 			<input type="text" class="search-query input-xlarge" name="q" id="queryField" title="Enter any product or vendor name." onkeyup="KeyEvent();" placeholder="Product or vendor name, or barcode scan." />
 			<div id="results"></div>
 		</div>
-		<div id="addItem" class="modal hide fade" tabindex="-1" role="dialog" aria-labelledby="addItemLabel" aria-hidden="true">
+\		<div id="editItem" class="modal hide fade" tabindex="-1" role="dialog" aria-labelledby="editItemLabel" aria-hidden="true">
 			<div class="modal-header">
 				<button type="button" class="close" data-dismiss="modal" aria-hidden="true">&times;</button>
-				<h3 id="addItemLabel">Create Product</h3>
+				<h3 id="editItemLabel">Edit Product</h3>
 			</div>
 			<div class="modal-body">
-				<label for="add-prodname">Product name:</label>
-				<input type="text" id="add-prodname" title="Please enter a product name here. Make sure it's not a duplicate." />
+				<label for="edit-prodname">Product name:</label>
+				<input type="text" id="edit-prodname" title="Please enter a product name here. Make sure it's not a duplicate." />
 				<br/>
-				<label for="add-barcode">Example barcode:</label>
-				<input type="text" id="add-barcode" title="If you have an example barcode, add it here." />
+				<label for="edit-count">Number in stock:</label>
+				<input type="number" id="edit-count" min="1" step="1" title="Number of items of this product which are currently in stock." />
+				<br/>
+				<label for="edit-barcodes">Known barcodes:</label>
+				<textarea id="edit-barcode" title="If you have barcodes known to match this product, add them here."></textarea>
+				<br/>
+				<label for="edit-price">Sales price:</label>
+				<input type="number" id="edit-price" step="0.05" min="0.05" />
 			</div>
 			<div class="modal-footer">
 				<button class="btn" data-dismiss="modal" aria-hidden="true">Close</button>
-				<button class="btn btn-primary" onclick="AddProduct();">Save changes</button>
+				<button class="btn btn-primary" onclick="EditProduct();">Save changes</button>
 			</div>
 		</div>
 	</body>
