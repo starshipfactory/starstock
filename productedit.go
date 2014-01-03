@@ -208,7 +208,7 @@ func (self *ProductViewAPI) ServeHTTP(w http.ResponseWriter, req *http.Request) 
 }
 
 func (self *ProductEditAPI) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	var buf *bytes.Buffer = bytes.NewBuffer([]byte{})
+	var buf *bytes.Buffer = new(bytes.Buffer)
 	var specid string = req.PostFormValue("id")
 	var uuid UUID
 	var codes *Barcodes = new(Barcodes)
@@ -252,8 +252,7 @@ func (self *ProductEditAPI) ServeHTTP(w http.ResponseWriter, req *http.Request) 
 		return
 	}
 
-	prod.Stock, err = strconv.ParseUint(req.PostFormValue("stock"),
-		10, 64)
+	prod.Stock, err = strconv.ParseUint(req.PostFormValue("stock"), 10, 64)
 	if err != nil {
 		log.Print("Parsing stock: ", err)
 		http.Error(w, "stock: "+err.Error(), http.StatusNotAcceptable)
@@ -292,7 +291,7 @@ func (self *ProductEditAPI) ServeHTTP(w http.ResponseWriter, req *http.Request) 
 	mutation.ColumnOrSupercolumn.Column = col
 	mutations = append(mutations, mutation)
 
-	err = binary.Write(buf, binary.BigEndian, &prod.Price)
+	err = binary.Write(buf, binary.BigEndian, prod.Price)
 	col = cassandra.NewColumn()
 	col.Name = []byte("price")
 	col.Value = buf.Bytes()
@@ -301,9 +300,9 @@ func (self *ProductEditAPI) ServeHTTP(w http.ResponseWriter, req *http.Request) 
 	mutation.ColumnOrSupercolumn = cassandra.NewColumnOrSuperColumn()
 	mutation.ColumnOrSupercolumn.Column = col
 	mutations = append(mutations, mutation)
-	buf.Reset()
 
-	err = binary.Write(buf, binary.BigEndian, &prod.Stock)
+	buf = new(bytes.Buffer)
+	err = binary.Write(buf, binary.BigEndian, prod.Stock)
 	col = cassandra.NewColumn()
 	col.Name = []byte("stock")
 	col.Value = buf.Bytes()

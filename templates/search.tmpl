@@ -302,7 +302,7 @@
 						label.removeChild(label.firstChild);
 
 					label.appendChild(document.createTextNode(
-						"Edit product " + name));
+						"Edit product " + response.responseJSON["Name"]));
 
 					$('#edit-id')[0].value = id;
 					$('#edit-prodname')[0].value = response.responseJSON["Name"];
@@ -310,8 +310,10 @@
 					$('#edit-price')[0].value = response.responseJSON["Price"];
 
 					// TODO(caoimhe): Do something with the barcodes.
-					barcodes = response.responseJSON["Barcodes"].join("\r\n");
-					$('#edit-barcode')[0].value = barcodes;
+					if (response.responseJSON["Barcodes"] != null) {
+						barcodes = response.responseJSON["Barcodes"].join("\r\n");
+						$('#edit-barcode')[0].value = barcodes;
+					}
 					$('#editItem').modal('show');
 				}
 			});
