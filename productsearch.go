@@ -323,25 +323,25 @@ func (self *ProductSearchAPI) ServeHTTP(w http.ResponseWriter, req *http.Request
 		}
 
 		// TODO(caoimhe): stub
-		r = new(SearchResult)
-		r.Name = "ACME Inc."
-		r.Uuid = "/vendor/acme"
-		res.Vendors = append(res.Vendors, r)
+		// r = new(SearchResult)
+		// r.Name = "ACME Inc."
+		// r.Uuid = "/vendor/acme"
+		// res.Vendors = append(res.Vendors, r)
 
-		r = new(SearchResult)
-		r.Name = "Starship Factory"
-		r.Uuid = "/vendor/starshipfactory"
-		res.Vendors = append(res.Vendors, r)
+		// r = new(SearchResult)
+		// r.Name = "Starship Factory"
+		// r.Uuid = "/vendor/starshipfactory"
+		// res.Vendors = append(res.Vendors, r)
 
-		r = new(SearchResult)
-		r.Name = "RaumZeitLabor e.V."
-		r.Uuid = "/vendor/rzl"
-		res.Vendors = append(res.Vendors, r)
+		// r = new(SearchResult)
+		// r.Name = "RaumZeitLabor e.V."
+		// r.Uuid = "/vendor/rzl"
+		// res.Vendors = append(res.Vendors, r)
 
-		r = new(SearchResult)
-		r.Name = "Doctor in the TARDIS"
-		r.Uuid = "/vendor/doctor"
-		res.Vendors = append(res.Vendors, r)
+		// r = new(SearchResult)
+		// r.Name = "Doctor in the TARDIS"
+		// r.Uuid = "/vendor/doctor"
+		// res.Vendors = append(res.Vendors, r)
 	}
 
 	rawdata, err = json.Marshal(res)
