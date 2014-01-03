@@ -270,6 +270,7 @@
 		}
 
 		function LoadProduct(id) {
+
 			new Ajax.Request('/api/product', {
 				parameters: {
 					id: id,
@@ -295,6 +296,7 @@
 				},
 				onSuccess: function(response) {
 					var label = $('#editItemLabel')[0];
+					var barcodes = '';
 
 					while (label.hasChildNodes())
 						label.removeChild(label.firstChild);
@@ -308,7 +310,8 @@
 					$('#edit-price')[0].value = response.responseJSON["Price"];
 
 					// TODO(caoimhe): Do something with the barcodes.
-
+					barcodes = response.responseJSON["Barcodes"].join("\r\n");
+					$('#edit-barcode')[0].value = barcodes;
 					$('#editItem').modal('show');
 				}
 			});
@@ -316,8 +319,12 @@
 
 		function EditProduct()
 		{
+			var label = $('#editItemLabel')[0];
+			var prodid = $('#edit-id')[0];
 			var prodname = $('#edit-prodname')[0];
+			var count = $('#edit-count')[0];
 			var barcode = $('#edit-barcode')[0];
+			var price = $('#edit-price')[0];
 
 			// TODO(caoimhe): notify the user about the error somehow.
 			if (prodname.value.length <= 0)
@@ -328,8 +335,12 @@
 
 			new Ajax.Request('/api/edit-product', {
 				parameters: {
+					id: prodid.value,
 					prodname: prodname.value,
-					barcode: barcode.value
+					stock: count.value,
+					barcode: barcode.value.replace(/\r\n/, "\n")
+						.replace(/\r/, "\n").split("\n"),
+					price: price.value
 				},
 				onFailure: function(response) {
 					var al = document.createElement("div");
@@ -380,7 +391,7 @@
 				<label for="edit-count">Number in stock:</label>
 				<input type="number" id="edit-count" min="1" step="1" title="Number of items of this product which are currently in stock." />
 				<br/>
-				<label for="edit-barcodes">Known barcodes:</label>
+				<label for="edit-barcode">Known barcodes:</label>
 				<textarea id="edit-barcode" title="If you have barcodes known to match this product, add them here."></textarea>
 				<br/>
 				<label for="edit-price">Sales price:</label>

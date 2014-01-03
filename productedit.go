@@ -40,6 +40,7 @@ import (
 	"log"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -58,7 +59,7 @@ type Product struct {
 	Price    float64
 	Barcodes []string
 	VendorId string
-	Stock    int64
+	Stock    uint64
 }
 
 type ProductViewAPI struct {
@@ -175,6 +176,10 @@ func (self *ProductViewAPI) ServeHTTP(w http.ResponseWriter, req *http.Request) 
 				productViewErrors.Add("corrupted-barcode", 1)
 				return
 			}
+
+			for _, code := range bc.Barcode {
+				prod.Barcodes = append(prod.Barcodes, code)
+			}
 		} else if cname == "stock" {
 			var buf *bytes.Buffer = bytes.NewBuffer(col.Value)
 			err = binary.Read(buf, binary.BigEndian, &prod.Stock)
@@ -203,16 +208,19 @@ func (self *ProductViewAPI) ServeHTTP(w http.ResponseWriter, req *http.Request) 
 }
 
 func (self *ProductEditAPI) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	var buf *bytes.Buffer = bytes.NewBuffer([]byte{})
 	var specid string = req.PostFormValue("id")
 	var uuid UUID
+	var codes *Barcodes = new(Barcodes)
 	var mmap map[string]map[string][]*cassandra.Mutation
+	var prod Product
 	var mutations []*cassandra.Mutation
 	var mutation *cassandra.Mutation
 	var col *cassandra.Column
 	var ire *cassandra.InvalidRequestException
 	var ue *cassandra.UnavailableException
 	var te *cassandra.TimedOutException
-	var prodname, barcode string
+	var barcode string
 	var now time.Time = time.Now()
 	var err error
 	var match bool
@@ -230,58 +238,94 @@ func (self *ProductEditAPI) ServeHTTP(w http.ResponseWriter, req *http.Request) 
 	}
 
 	// Check if the product name has been specified.
-	prodname = req.PostFormValue("prodname")
-	if len(prodname) <= 0 {
+	prod.Name = req.PostFormValue("prodname")
+	if len(prod.Name) <= 0 {
+		log.Print("Parsing product name: ", err)
 		http.Error(w, "Product name empty", http.StatusNotAcceptable)
+		return
+	}
+
+	prod.Price, err = strconv.ParseFloat(req.PostFormValue("price"), 64)
+	if err != nil {
+		log.Print("Parsing price: ", err)
+		http.Error(w, "price: "+err.Error(), http.StatusNotAcceptable)
+		return
+	}
+
+	prod.Stock, err = strconv.ParseUint(req.PostFormValue("stock"),
+		10, 64)
+	if err != nil {
+		log.Print("Parsing stock: ", err)
+		http.Error(w, "stock: "+err.Error(), http.StatusNotAcceptable)
 		return
 	}
 
 	// Check if the barcode has been given. If it was, it needs to be
 	// numeric (EAN-13). If we find different types of barcodes we can
 	// always revise this.
-	barcode = strings.Replace(req.PostFormValue("barcode"), " ", "", -1)
-	if len(barcode) > 0 {
-		match, err = regexp.MatchString("^[0-9]+$", barcode)
-		if err != nil {
-			productEditErrors.Add(err.Error(), 1)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		if !match {
-			productEditErrors.Add("barcode-format-error", 1)
-			http.Error(w, "Barcode should only contain numbers",
-				http.StatusNotAcceptable)
-			return
+	for _, barcode = range req.PostForm["barcode"] {
+		barcode = strings.Replace(barcode, " ", "", -1)
+		if len(barcode) > 0 {
+			match, err = regexp.MatchString("^[0-9]+$", barcode)
+			if err != nil {
+				productEditErrors.Add(err.Error(), 1)
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			if match {
+				codes.Barcode = append(codes.Barcode, barcode)
+			} else {
+				productEditErrors.Add("barcode-format-error", 1)
+				http.Error(w, "Barcode should only contain numbers",
+					http.StatusNotAcceptable)
+				return
+			}
 		}
 	}
 
 	col = cassandra.NewColumn()
 	col.Name = []byte("name")
-	col.Value = []byte(prodname)
+	col.Value = []byte(prod.Name)
 	col.Timestamp = now.Unix()
 	mutation = cassandra.NewMutation()
 	mutation.ColumnOrSupercolumn = cassandra.NewColumnOrSuperColumn()
 	mutation.ColumnOrSupercolumn.Column = col
 	mutations = append(mutations, mutation)
 
-	if len(barcode) > 0 {
-		var codes *Barcodes = new(Barcodes)
-		codes.Barcode = append(codes.Barcode, barcode)
+	err = binary.Write(buf, binary.BigEndian, &prod.Price)
+	col = cassandra.NewColumn()
+	col.Name = []byte("price")
+	col.Value = buf.Bytes()
+	col.Timestamp = now.Unix()
+	mutation = cassandra.NewMutation()
+	mutation.ColumnOrSupercolumn = cassandra.NewColumnOrSuperColumn()
+	mutation.ColumnOrSupercolumn.Column = col
+	mutations = append(mutations, mutation)
+	buf.Reset()
 
-		col = cassandra.NewColumn()
-		col.Name = []byte("barcodes")
-		col.Value, err = proto.Marshal(codes)
-		if err != nil {
-			productEditErrors.Add(err.Error(), 1)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		col.Timestamp = now.Unix()
-		mutation = cassandra.NewMutation()
-		mutation.ColumnOrSupercolumn = cassandra.NewColumnOrSuperColumn()
-		mutation.ColumnOrSupercolumn.Column = col
-		mutations = append(mutations, mutation)
+	err = binary.Write(buf, binary.BigEndian, &prod.Stock)
+	col = cassandra.NewColumn()
+	col.Name = []byte("stock")
+	col.Value = buf.Bytes()
+	col.Timestamp = now.Unix()
+	mutation = cassandra.NewMutation()
+	mutation.ColumnOrSupercolumn = cassandra.NewColumnOrSuperColumn()
+	mutation.ColumnOrSupercolumn.Column = col
+	mutations = append(mutations, mutation)
+
+	col = cassandra.NewColumn()
+	col.Name = []byte("barcodes")
+	col.Value, err = proto.Marshal(codes)
+	if err != nil {
+		productEditErrors.Add(err.Error(), 1)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
+	col.Timestamp = now.Unix()
+	mutation = cassandra.NewMutation()
+	mutation.ColumnOrSupercolumn = cassandra.NewColumnOrSuperColumn()
+	mutation.ColumnOrSupercolumn.Column = col
+	mutations = append(mutations, mutation)
 
 	// If we're editing an existing product, re-use that UUID. Otherwise,
 	// generate one.
@@ -308,8 +352,8 @@ func (self *ProductEditAPI) ServeHTTP(w http.ResponseWriter, req *http.Request) 
 	mutation.ColumnOrSupercolumn = cassandra.NewColumnOrSuperColumn()
 	mutation.ColumnOrSupercolumn.Column = col
 	mutations = append(mutations, mutation)
-	mmap[prodname] = make(map[string][]*cassandra.Mutation)
-	mmap[prodname]["products_byname"] = mutations
+	mmap[prod.Name] = make(map[string][]*cassandra.Mutation)
+	mmap[prod.Name]["products_byname"] = mutations
 
 	if len(barcode) > 0 {
 		mmap[barcode] = make(map[string][]*cassandra.Mutation)
