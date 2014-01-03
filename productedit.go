@@ -161,7 +161,7 @@ func (self *ProductViewAPI) ServeHTTP(w http.ResponseWriter, req *http.Request) 
 			prod.Name = string(col.Value)
 		} else if cname == "price" {
 			var buf *bytes.Buffer = bytes.NewBuffer(col.Value)
-			err = binary.Read(buf, binary.LittleEndian, &prod.Price)
+			err = binary.Read(buf, binary.BigEndian, &prod.Price)
 			if err != nil {
 				log.Print("Row ", uuid.String(), " price is invalid")
 				productViewErrors.Add("corrupted-price", 1)
