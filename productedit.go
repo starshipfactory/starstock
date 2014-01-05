@@ -282,6 +282,7 @@ func (self *ProductEditAPI) ServeHTTP(w http.ResponseWriter, req *http.Request) 
 		}
 	}
 
+	// Create column data for the product row.
 	col = cassandra.NewColumn()
 	col.Name = []byte("name")
 	col.Value = []byte(prod.Name)
@@ -292,6 +293,11 @@ func (self *ProductEditAPI) ServeHTTP(w http.ResponseWriter, req *http.Request) 
 	mutations = append(mutations, mutation)
 
 	err = binary.Write(buf, binary.BigEndian, prod.Price)
+	if err != nil {
+		productEditErrors.Add(err.Error(), 1)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	col = cassandra.NewColumn()
 	col.Name = []byte("price")
 	col.Value = buf.Bytes()
@@ -303,6 +309,11 @@ func (self *ProductEditAPI) ServeHTTP(w http.ResponseWriter, req *http.Request) 
 
 	buf = new(bytes.Buffer)
 	err = binary.Write(buf, binary.BigEndian, prod.Stock)
+	if err != nil {
+		productEditErrors.Add(err.Error(), 1)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	col = cassandra.NewColumn()
 	col.Name = []byte("stock")
 	col.Value = buf.Bytes()
