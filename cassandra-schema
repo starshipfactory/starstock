@@ -1,6 +1,7 @@
 create keyspace starstock;
 use starstock;
 create column family products with key_validation_class = 'LexicalUUIDType' and comparator = 'AsciiType' and column_metadata = [{column_name: name, validation_class: UTF8Type, index_type: KEYS}, {column_name: price, validation_class: DoubleType, index_type: KEYS}, {column_name: vendor, validation_class: LexicalUUIDType, index_type: KEYS}, {column_name: barcodes, validation_class: BytesType, index_type: 0}, {column_name: stock, validation_class: LongType, index_type: KEYS}];
+create column family product_tsdata with key_validation_class = 'BytesType' and comparator = 'AsciiType' and default_validation_class = 'LongType';
 create column family vendors with key_validation_class = 'LexicalUUIDType' and comparator = 'AsciiType' and column_metadata = [{column_name: name, validation_class: UTF8Type, index_type: KEYS}, {column_name: address, validation_class: UTF8Type, index_type: 0}, {column_name: comments, validation_class: UTF8Type, index_type: 0}];
 create column family products_byname with key_validation_class = 'UTF8Type' and comparator = 'AsciiType' and column_metadata = [{column_name: product, validation_class: LexicalUUIDType, index_type: KEYS}];
 create column family products_bybarcode with key_validation_class = 'AsciiType' and comparator = 'AsciiType' and column_metadata = [{column_name: product, validation_class: LexicalUUIDType, index_type: KEYS}];

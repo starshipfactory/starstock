@@ -213,6 +213,7 @@ func (self *ProductEditAPI) ServeHTTP(w http.ResponseWriter, req *http.Request) 
 	var uuid UUID
 	var codes *Barcodes = new(Barcodes)
 	var mmap map[string]map[string][]*cassandra.Mutation
+	var tsprefix []byte
 	var prod Product
 	var mutations []*cassandra.Mutation
 	var mutation *cassandra.Mutation
@@ -353,6 +354,7 @@ func (self *ProductEditAPI) ServeHTTP(w http.ResponseWriter, req *http.Request) 
 	mmap[string(uuid)] = make(map[string][]*cassandra.Mutation)
 	mmap[string(uuid)]["products"] = mutations
 
+	// Create the entry in the products_byname index.
 	mutations = make([]*cassandra.Mutation, 0)
 	col = cassandra.NewColumn()
 	col.Name = []byte("product")
@@ -365,12 +367,44 @@ func (self *ProductEditAPI) ServeHTTP(w http.ResponseWriter, req *http.Request) 
 	mmap[prod.Name] = make(map[string][]*cassandra.Mutation)
 	mmap[prod.Name]["products_byname"] = mutations
 
+	// If a barcode has been given, specify it in the products_bybarcode
+	// column.
 	if len(barcode) > 0 {
 		mmap[barcode] = make(map[string][]*cassandra.Mutation)
 		mmap[barcode]["products_bybarcode"] = mutations
 	}
 
-	ire, ue, te, err = self.client.BatchMutate(mmap,
+	// Log a timeseries entry stating that the product has been present
+	// at the time.
+	mutations = make([]*cassandra.Mutation, 0)
+	col = cassandra.NewColumn()
+	col.Name = []byte("product-count")
+	col.Value = buf.Bytes() // still the product count from above.
+	col.Timestamp = now.Unix()
+	mutation = cassandra.NewMutation()
+	mutation.ColumnOrSupercolumn = cassandra.NewColumnOrSuperColumn()
+	mutation.ColumnOrSupercolumn.Column = col
+	mutations = append(mutations, mutation)
+
+	// Create the TS prefix: first the UUID, then the timestamp.
+	buf = new(bytes.Buffer)
+	err = binary.Write(buf, binary.BigEndian, now.UnixNano())
+	if err != nil {
+		productEditErrors.Add(err.Error(), 1)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	tsprefix = make([]byte, len(uuid)+buf.Len()+1)
+	copy(tsprefix, uuid)
+	tsprefix[len(uuid)] = ':'
+	for i, v := range buf.Bytes() {
+		tsprefix[len(uuid)+i+1] = v
+	}
+	mmap[string(tsprefix)] = make(map[string][]*cassandra.Mutation)
+	mmap[string(tsprefix)]["product_tsdata"] = mutations
+
+	// Now, write the mutations to the database.
+	ire, ue, te, err = self.client.AtomicBatchMutate(mmap,
 		cassandra.ConsistencyLevel_QUORUM)
 	if ire != nil {
 		log.Println("Invalid request: ", ire.Why)
